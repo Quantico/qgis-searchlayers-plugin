@@ -76,59 +76,63 @@ class Worker(QObject):
         # self.error.emit('trans extent: {}'.format(textent))
         return(extent)
 
-    def searchLayer(self, layer):
-        '''Do a string search across all columns in a table'''
-        if self.killed:
-            return
-        # Check for contraints
-        if self.constrain_to_canvas and layer.isSpatial():
-            extent = self.canvasExtent(layer)
-            request = QgsFeatureRequest(extent)
-        else:
-            request = QgsFeatureRequest()
-        fnames = []
-        # Get and Keep a copy of the field names
-        for field in layer.fields():
-            fnames.append(field.name())
-        # Get an iterator for all the features in the vector
-        if self.search_selected:
-            if layer.selectedFeatureCount() == 0:
-                return
-            iter = layer.getSelectedFeatures(request)
-        else:
-            iter = layer.getFeatures(request)
-        if self.case_sensitive:
-            flags1 = re.UNICODE
-        else:
-            flags1 = re.I|re.UNICODE
-        if self.comparisonMode == 0: # Searching for an exact match
-            p1 = re.compile("^"+re.escape(self.searchStr)+"$", flags1)
-        elif self.comparisonMode == 1: # contains string
-            p1 = re.compile(re.escape(self.searchStr), flags1)
-        elif self.comparisonMode == 2: # begins with
-            p1 = re.compile("^"+re.escape(self.searchStr), flags1)
-        else: # ends with
-            p1 = re.compile(re.escape(self.searchStr)+"$", flags1)
-        if self.searchStr2 == '':  # There is only one search string
-            if self.not_search:
-                for feature in iter:
-                    # Check to see if it has been aborted
-                    if self.killed is True:
+                def searchLayer(self, layer):
+                    '''Do a string search across all columns in a table'''
+                    if self.killed:
                         return
-                    attrs = feature.attributes()
-                    # For now just search as if it were a string
-                    for id, f in enumerate(attrs):
-                        try:
-                            if not p1.search(str(f)):
-                                self.foundmatch.emit(layer, feature, fnames[id], str(f), None, None)
-                                self.found += 1
-                                if self.found >= self.maxResults:
+                    # Check for contraints
+                    if self.constrain_to_canvas and layer.isSpatial():
+                        extent = self.canvasExtent(layer)
+                        request = QgsFeatureRequest(extent)
+                    else:
+                        request = QgsFeatureRequest()
+                    fnames = []
+                    # Get and Keep a copy of the field names
+                    for field in layer.fields():
+                        fnames.append(field.name())
+                    # Get an iterator for all the features in the vector
+                    if self.search_selected:
+                        if layer.selectedFeatureCount() == 0:
+                            return
+                        iter = layer.getSelectedFeatures(request)
+                    else:
+                        iter = layer.getFeatures(request)
+
+                    # Change the comparison mode to use Python built-in string functions instead of regex.
+                    for feature in iter:
+                        # Check to see if it has been aborted
+                        if self.killed is True:
+                            return
+                        attrs = feature.attributes()
+                        # For now just search as if it were a string
+                        for id, f in enumerate(attrs):
+                            try:
+                                s = str(f)
+                                if self.comparisonMode == 0: # exact match
+                                    if s == self.searchStr:
+                                        self.foundmatch.emit(layer, feature, fnames[id], s, None, None)
+                                        self.found += 1
+                                elif self.comparisonMode == 1: # contains string
+                                    if self.searchStr in s:
+                                        self.foundmatch.emit(layer, feature, fnames[id], s, None, None)
+                                        self.found += 1
+                                elif self.comparisonMode == 2: # begins with
+                                    if s.startswith(self.searchStr):
+                                        self.foundmatch.emit(layer, feature, fnames[id], s, None, None)
+                                        self.found += 1
+                                elif self.comparisonMode == 3: # ends with
+                                    if s.endswith(self.searchStr):
+                                        self.foundmatch.emit(layer, feature, fnames[id], s, None, None)
+                                        self.found += 1
+
+                                if self.first_match_only and self.found > 0:
                                     self.killed=True
                                     return
-                                if self.first_match_only:
-                                    break
-                        except:
-                            pass
+
+                            except:
+                                pass
+    
+    
             else:
                 for feature in iter:
                     # Check to see if it has been aborted
